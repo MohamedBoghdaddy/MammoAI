@@ -13,20 +13,45 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator, img_to_arra
 from tkinter import filedialog, Label, Button
 import tkinter as tk
 from PIL import ImageTk, Image
+import os
 
 # -----------------------------------------------------------
-# Part 1: CNN Model for Image-Based Prediction
+# PART 1: CNN Model for Image-Based Prediction
 # -----------------------------------------------------------
 
-# Build a CNN model
+# Define dataset paths for benign and malignant images
+benign_path = 'Multi Cancer/Multi Cancer/Breast Cancer/breast_benign'
+malignant_path = 'Multi Cancer/Multi Cancer/Breast Cancer/breast_malignant'
+
+# Set up the data generators
+datagen = ImageDataGenerator(rescale=1./255, validation_split=0.2)  # 80/20 train-validation split
+
+# Train data generator
+train_generator = datagen.flow_from_directory(
+    'Multi Cancer/Multi Cancer/Breast Cancer',
+    target_size=(224, 224),
+    batch_size=32,
+    class_mode='categorical',
+    subset='training'
+)
+
+# Validation data generator
+validation_generator = datagen.flow_from_directory(
+    'Multi Cancer/Multi Cancer/Breast Cancer',
+    target_size=(224, 224),
+    batch_size=32,
+    class_mode='categorical',
+    subset='validation'
+)
+
+# Build a CNN model for binary classification (benign vs malignant)
 def build_cnn_model():
     model = Sequential()
 
-    # Convolutional layer and max pooling
+    # Convolutional layers and max pooling
     model.add(Conv2D(32, (3, 3), activation='relu', input_shape=(224, 224, 3)))
     model.add(MaxPooling2D(pool_size=(2, 2)))
 
-    # Additional layers
     model.add(Conv2D(64, (3, 3), activation='relu'))
     model.add(MaxPooling2D(pool_size=(2, 2)))
 
@@ -34,14 +59,22 @@ def build_cnn_model():
     model.add(Flatten())
     model.add(Dense(128, activation='relu'))
     model.add(Dropout(0.5))
-    model.add(Dense(1, activation='sigmoid'))
+    model.add(Dense(2, activation='softmax'))  # Two classes: benign and malignant
 
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
     return model
 
-# Load pre-trained weights if available, else train the model on a dataset.
+# Load weights if available, else train the model
 cnn_model = build_cnn_model()
-cnn_model.load_weights('model_weights.h5')  # Load pre-trained weights if available
+
+if os.path.exists('cnn_model_weights.h5'):
+    cnn_model.load_weights('cnn_model_weights.h5')
+    print("Pre-trained weights loaded successfully!")
+else:
+    print("No pre-trained weights found, training from scratch.")
+    # Train the model
+    cnn_model.fit(train_generator, validation_data=validation_generator, epochs=10)
+    cnn_model.save_weights('cnn_model_weights.h5')  # Save the trained weights
 
 # Function to preprocess and predict image
 def preprocess_and_predict(image_path):
@@ -51,24 +84,12 @@ def preprocess_and_predict(image_path):
     img = img / 255.0
 
     prediction = cnn_model.predict(img)
-    return 'Cancer Detected' if prediction[0][0] > 0.5 else 'No Cancer Detected'
-
-# GUI Implementation using Tkinter
-def upload_image():
-    file_path = filedialog.askopenfilename()
-    img = Image.open(file_path)
-    img = img.resize((224, 224), Image.ANTIALIAS)
-    img = ImageTk.PhotoImage(img)
-    
-    panel = Label(window, image=img)
-    panel.image = img
-    panel.grid(row=2, column=0, columnspan=2)
-
-    result = preprocess_and_predict(file_path)
-    result_label.config(text=result)
+    class_names = ['Benign', 'Malignant']
+    result = class_names[np.argmax(prediction)]
+    return f'{result} Cancer Detected'
 
 # -----------------------------------------------------------
-# Part 2: Logistic Regression Model for CSV-Based Prediction
+# PART 2: Logistic Regression Model for CSV-Based Prediction
 # -----------------------------------------------------------
 
 # Load the dataset from the CSV file
@@ -116,8 +137,21 @@ plt.xlabel('Predicted Label')
 plt.show()
 
 # -----------------------------------------------------------
-# Part 3: Tkinter GUI for Image Upload
+# PART 3: Tkinter GUI for Image Upload
 # -----------------------------------------------------------
+
+def upload_image():
+    file_path = filedialog.askopenfilename()
+    img = Image.open(file_path)
+    img = img.resize((224, 224), Image.ANTIALIAS)
+    img = ImageTk.PhotoImage(img)
+
+    panel = Label(window, image=img)
+    panel.image = img
+    panel.grid(row=2, column=0, columnspan=2)
+
+    result = preprocess_and_predict(file_path)
+    result_label.config(text=result)
 
 # Tkinter GUI setup
 window = tk.Tk()
